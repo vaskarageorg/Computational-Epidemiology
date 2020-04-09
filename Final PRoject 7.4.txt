@@ -1,0 +1,171 @@
+library(lme4)
+library(tidyverse)
+library(openxlsx)
+covar = readRDS('/rds/general/project/hda_comp_epi/live/Project/Data/Covariates_full.rds')
+biomarkers = readRDS('/rds/general/project/hda_comp_epi/live/Project/Data/Biomarkers_full.rds')
+
+dim(covar)
+dim(biomarkers)
+
+colnames(covar)
+colnames(biomarkers)
+biomarkers$`mydata$eid`
+biomarker_annotation = (read.xlsx('/rds/general/project/hda_comp_epi/live/Project/Data/Biomarker_annotation.xlsx'))
+covar_annotation = (read.xlsx('/rds/general/project/hda_comp_epi/live/Project/Data/Covariate_dictionary.xlsx'))
+
+#Calcium, Urea, Vitamin D, urate in Cancer incidence. 
+
+#We also add cystatin as ↑ in renal disease -> ↑ calcium
+
+biomarkers$ID = biomarkers$`mydata$eid`
+covar$ID = rownames(covar)
+merged_ce = merge(covar, biomarkers, by = 'ID')
+
+biomarkers_aligned = merged_ce[, c(1, 41:100)]
+covariates_aligned = merged_ce[, c(1, 1:40)]
+rownames(covariates_aligned) = rownames(biomarkers_aligned) = merged_ce$ID
+
+my_data <- as_tibble(biomarkers_aligned)
+my_covariates <- as_tibble(covariates_aligned)
+
+biomarkers_selected = my_data %>% select(ID,
+                                         X30680.0.0, X30680.1.0,
+                                         X30670.0.0, X30670.1.0,
+                                         X30890.0.0, X30890.1.0,
+                                         X30880.0.0, X30880.1.0)
+
+covar_selected = my_covariates %>% select(ID,cvd_final_icd10,cvd_final_icd9,
+                                          age_recruitment.0.0,age_CVD,
+                                          smok_ever_2,alcohol_2,
+                                          BMI_5cl_2,no_medicines,)
+
+na_biomarkers = sort(apply(biomarkers_selected,2,
+                           function(x){sum(is.na(x))/(dim(biomarkers)[1]*dim(biomarkers)[2])}))
+na_covar = sort(apply(covar,2,function(x){sum(is.na(x))}))
+
+
+#We check what diagnoses are available
+ICD_names = sort(unique(covar$cvd_final_icd10))
+
+length(ICD_names)
+ICD_frequencies = matrix(ncol = 2,nrow = length(ICD_names))
+for (i in 1:length(ICD_names)){
+  ICD_frequencies[i,1] = ICD_names[i]
+  ICD_frequencies[i,2] = as.numeric(sum(covar$cvd_final_icd10 == ICD_names[i]))
+  
+}
+
+ICD_frequencies = as.data.frame(ICD_frequencies)
+
+ICD_freq = arrange(ICD_frequencies, V2)
+tail(ICD_freq$V1,20)
+
+#I251: Atherosclerotic heart disease
+#I219: Acute myocardial infarction, unspecified
+#I639: cerebral infarction, unspecified
+#I209: angina pectoris, unspecified
+#G459: Transient cerebral ischemic attack, unspecified
+#I200: unstable angina, unspecified
+#I211: acute transmural MI of inferior wall
+#I210: acute transmural MI of anterior wall
+#I259: Chronic ischaemic heart disease, unspecified
+#I214: Acute subendocardial myocardial infarction 
+#I64: Stroke NOS
+#G454: Transient Global Amnesia
+#I635: Cerebral infarction due to unspecified occlusion or stenosis of cerebral arteries
+#I249: Acute ischaemic heart disease, unspecified
+#I633: Cerebral infarction due to thrombosis of cerebral arteries
+#I638: other Cerebral infarction
+#I212: Acute transmural myocardial infarction of other sites
+#I632: Cerebral infarction due to unspecified occlusion or stenosis of precerebral arteries
+#I213: Acute transmural myocardial infarction of unspecified site
+#I634: Cerebral infarction due to embolism of cerebral arteries
+#I248: Other forms of acute ischaemic heart disease (coronary failure, coronary insufficiency)
+
+#We define an outcome of: MI irrespectively of location
+MI_anywhere_codes = c('I219', 'I211', 'I210', 'I214', 'I212', 'I213')
+
+#We also define an outcome of: stroke of any cause
+stroke_any_cause_codes = c('I639', 'I64', 'I635', 'I633', 'I638', 'I632', 'I634')
+
+MI_anywhere = ifelse(covar$cvd_final_icd10 %in% MI_anywhere_codes, 1, 0)
+stroke_any_cause = ifelse(covar$cvd_final_icd10 %in% stroke_any_cause_codes, 1, 0)
+
+
+calcium_change = merged_ce$X30680.0.0 - merged_ce$X30680.1.0
+calcium_change = merged_ce$X30680.0.0 - merged_ce$X30680.1.0
+
+urea_change = merged_ce$X30670.0.0 - merged_ce$X30670.1.0
+vitD_change = merged_ce$X30890.0.0 - merged_ce$X30890.1.0
+phosphate
+
+model_MI_vit = glm(MI_anywhere ~ merged_ce$X30890.0.0 + vitD_change + 
+                     merged_ce$X30680.0.0 + calcium_change +
+                     merged_ce$X30670.0.0 + urea_change+
+                     merged_ce$age_cl + merged_ce$gender + merged_ce$BMI_5cl_2, 
+                   family = binomial())
+summary(model_MI_vit)
+
+summary(lm(calcium_change ~ vitD_change))
+
+
+#Decomposition of variability with different methods
+head(biomarkers_selected)
+
+#Method 1: Denoising biomarkers data for ID----
+colnames(biomarkers_selected)
+View(biomarker_annotation)
+
+biomarkers_first_timepoint_index = c("ID", "X30680.0.0", "X30670.0.0", "X30890.0.0", "X30880.0.0")
+biom_first_timepoint = biomarkers_selected[, biomarkers_first_timepoint_index]
+colnames(biom_first_timepoint) = c("ID", "Calcium", "Urea", "VitD", "Urate")
+
+biomarkers_second_timepoint_index = c("ID", "X30680.1.0", "X30670.1.0", "X30890.1.0", "X30880.1.0")
+biom_second_timepoint = biomarkers_selected[, biomarkers_second_timepoint_index]
+colnames(biom_second_timepoint) = c("ID", "Calcium", "Urea", "VitD", "Urate")
+
+
+biomarkers_long = as.data.frame(rbind(biom_first_timepoint, biom_second_timepoint))
+dim(biomarkers_long)
+
+f0 = "biomarkers_long[,k] ~ age_recruitment.0.0 + smok_ever_2 + alcohol_2 + BMI_5cl_2 + (1 | ID)"
+f1 = "biomarkers_long[,k] ~ age_recruitment.0.0 + smok_ever_2 + alcohol_2 + no_medicines + BMI_5cl_2 + (1 | ID)"
+
+for (k in seq(2:ncol(biomarkers_long))) {
+  print(k)
+  model = lmer(as.formula(f0), data = covar_selected, REML = FALSE,
+               control = lmerControl(check.conv.singular = .makeCC(action = "ignore",
+                                                                   tol = 1e-04)))
+  model0 = lmer(as.formula(f0), data = covar_selected,
+                REML = FALSE, control = lmerControl(check.conv.singular = .makeCC(action = "ignore",
+                                                                                  tol = 1e-04)))
+  pvalue_pooled_wbc = c(pvalue_pooled_wbc, anova(model,
+                                                 model0)$"Pr(>Chisq)"[2])
+  Beta_pooled_wbc = c(Beta_pooled_wbc, fixef(model)["type1"])
+}
+
+#Check GITHUB for mlmer
+calcium_2 = biomarkers_long[,2]
+model = mlmer(calcium_2 ~ (1 | ID), data = biomarkers_long)
+
+
+
+
+#Method 2: Lecture 4 inter and intra-individul variability----
+colnames(biomarkers_selected)
+
+
+offset_calcium = mean(biomarkers_long$Calcium, na.rm=T)
+between_subject_variation_calcium = (biomarkers_selected$X30680.0.0 + biomarkers_selected$X30680.1.0)/2 - offset_calcium
+within_subject_variation_calcium = biomarkers_selected$X30680.1.0 - between_subject_variation_calcium
+
+which(calcium_change == max(calcium_change, na.rm = T))
+
+which(within_subject_variation_calcium == max(within_subject_variation_calcium, na.rm = T))
+
+within_subject_variation_calcium[262868]
+
+head(which(!is.na(between_subject_variation_calcium)))
+
+#Sensitivity Analysis----
+#Only normal levels
