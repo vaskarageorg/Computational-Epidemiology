@@ -7,6 +7,7 @@ biomarkers = readRDS('/rds/general/project/hda_comp_epi/live/Project/Data/Biomar
 dim(covar)
 dim(biomarkers)
 
+covar$vit_status
 colnames(covar)
 colnames(biomarkers)
 biomarkers$`mydata$eid`
@@ -166,6 +167,16 @@ which(within_subject_variation_calcium == max(within_subject_variation_calcium, 
 within_subject_variation_calcium[262868]
 
 head(which(!is.na(between_subject_variation_calcium)))
+
+
+#SO, WE MODEL WITHIN_SUBJECT VARIATION FOR OUR FOUR EXPOSURES, MAYBE COMBINED IN 1 (?), 
+
+survivalobject(  (follow_up, binary_outcome)~ Vitamin D + + +  
+)
+
+#Options: 1) time to diagnosis (given that the ICD diagnosis is not), 
+#         2) time to death ONLY WITHIN THOSE THAT WERE DIAGNOSED
+#         3) 
 
 #Sensitivity Analysis----
 #Only normal levels
